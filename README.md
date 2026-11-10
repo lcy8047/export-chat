@@ -35,7 +35,7 @@ The extension runs without Node.js or `npm install`.
 
 ## Troubleshooting message detection
 
-The collector supports both legacy role attributes and newer ChatGPT search-unit, conversation-role, and user-bubble markers. It also handles turn-level roles without assuming that a turn is an `article`, and does not restrict detection to the first `main` element. Nested markers for the same message are deduplicated; grouped exchanges keep user and assistant messages separate.
+The collector supports both legacy role attributes and newer ChatGPT search-unit, conversation-role, and user-bubble markers. It also handles turn-level roles without assuming that a turn is an `article`, and does not restrict detection to the first `main` element. Nested markers for the same message are deduplicated; grouped exchanges keep user and assistant messages separate. Conversation role headings and screen-reader turn labels outside message bodies are excluded without filtering matching words from actual messages.
 
 If no messages are available immediately, collection waits up to four seconds for rendering. A failed collection is labeled **Collection failed**, with **Save diagnostics** available for troubleshooting. The diagnostic file contains only document readiness and marker counts, without message text, HTML, titles, URLs, or message identifiers. No diagnostics are sent automatically.
 

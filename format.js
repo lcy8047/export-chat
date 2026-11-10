@@ -2,6 +2,14 @@
   const app = globalThis.__chatExportV1 ||= {};
   if (app.format) return;
   const OMIT = "button,script,style,svg,nav,input,textarea,[hidden],[aria-hidden='true'],.turn-action-controls";
+  const BODY_SELECTOR = '.markdown,.MarkdownRoot,[data-user-message-bubble="true"],.whitespace-pre-wrap,[data-testid="collapsible-user-message-content"]';
+  const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
+  function isRoleLabel(node) {
+    if (!node.matches(HEADING_SELECTOR) || node.closest(BODY_SELECTOR)) return false;
+    // Role headings describe the conversation UI, not a separate authored message.
+    // Do not match their text: a real message may contain exactly the same words.
+    return node.matches('[data-conversation-role],[data-message-author-role],[data-turn],.sr-only,[data-testid="conversation-turn-heading"]');
+  }
   const escape = text => String(text).replace(/\\/g, "\\\\").replace(/([`*_[\]<>])/g, "\\$1");
   const ticks = text => Math.max(0, ...(text.match(/`+/g) || []).map(s => s.length));
   const block = text => `\n\n${text.trim()}\n\n`;
@@ -81,8 +89,12 @@
   }
 
   function fromElement(element, role, base) {
+    if (isRoleLabel(element)) return { text: "", markdown: "", images: [], attachments: [] };
     const clone = element.cloneNode(true);
     clone.querySelectorAll(OMIT).forEach(node => node.remove());
+    clone.querySelectorAll(HEADING_SELECTOR).forEach(node => {
+      if (isRoleLabel(node)) node.remove();
+    });
     const candidates = role === "assistant" ? Array.from(clone.querySelectorAll(".markdown,.MarkdownRoot")) : [];
     const roots = candidates.filter(node => !candidates.some(other => other !== node && other.contains(node)));
     // Restrict known message bodies to avoid exporting action labels and UI chrome.
@@ -118,5 +130,5 @@
       .slice(0, 80).replace(/[.\s]+$/g, "") || "conversation";
     return `chat-export-${safe}.${extension}`;
   }
-  app.format = Object.freeze({ fromElement, toMarkdown, markdown, filename });
+  app.format = Object.freeze({ fromElement, toMarkdown, markdown, filename, isRoleLabel });
 })();

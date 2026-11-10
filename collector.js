@@ -24,7 +24,7 @@
   }
 
   function eligible(node) {
-    if (node.closest(EXCLUDED)) return false;
+    if (node.closest(EXCLUDED) || app.format.isRoleLabel(node)) return false;
     for (let parent = node; parent; parent = parent.parentElement) {
       const style = getComputedStyle(parent);
       if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return false;

@@ -340,3 +340,64 @@ test('failed collection is shown as an error with diagnostics instead of a finis
     assert.equal([...shadow.querySelectorAll('button')].find(b => b.textContent === 'Save JSON').disabled, true);
   } finally { dom.window.close(); }
 });
+
+const localizedRoleLabel = '\ub0b4\uac00 \ud55c \ub9d0:';
+const localizedQuestion = '\ud655\uc7a5\ud504\ub85c\uadf8\ub7a8\uc740 \uc758\uc2ec\uc2a4\ub7ec\uc6cc\uc11c \ub0b4\uac00 \uc9c1\uc811 \uad6c\ud604\ud558\uace0 \uc2f6\uc740\ub370';
+
+test('standalone conversation role headings are not exported as extra messages', async () => {
+  const { dom, app } = environment(`
+    <div data-turn-key="exchange">
+      <h4 data-conversation-role="user">${localizedRoleLabel}</h4>
+      <div data-content-search-unit-key="exchange:0:user"><div data-user-message-bubble="true">${localizedQuestion}</div></div>
+      <h4 data-conversation-role="assistant">ChatGPT said:</h4>
+      <div data-content-search-unit-key="exchange:2:assistant"><div class="MarkdownRoot">Answer</div></div>
+    </div>`);
+  try {
+    const data = await new app.Collector().collect({ mode: 'loaded' });
+    assert.deepEqual(plain(data.messages.map(m => m.role)), ['user', 'assistant']);
+    assert.equal(data.messages[0].text, localizedQuestion);
+    assert.ok(!app.format.markdown(data).includes(localizedRoleLabel));
+  } finally { dom.window.close(); }
+});
+
+test('label-only search units are skipped while headings surrounding a body are stripped', async () => {
+  const { dom, app } = environment(`
+    <div data-turn-key="exchange">
+      <div data-content-search-unit-key="exchange:0:user"><h4 data-conversation-role="user">${localizedRoleLabel}</h4></div>
+      <div data-content-search-unit-key="exchange:1:user"><div data-user-message-bubble="true">${localizedQuestion}</div></div>
+      <div data-content-search-unit-key="exchange:2:assistant"><h4 data-conversation-role="assistant">ChatGPT said:</h4><p>Answer</p></div>
+    </div>`);
+  try {
+    const data = await new app.Collector().collect({ mode: 'loaded' });
+    assert.deepEqual(plain(data.messages.map(m => m.text)), [localizedQuestion, 'Answer']);
+    assert.equal(data.messages[1].markdown, 'Answer');
+  } finally { dom.window.close(); }
+});
+
+test('screen-reader turn headings outside message bodies do not leak into either format', async () => {
+  const { dom, app } = environment(`
+    <section data-turn="user" data-turn-id="question"><h5 class="sr-only">You said:</h5><p>Question</p></section>
+    <section data-turn="assistant" data-turn-id="answer"><h6 class="sr-only">ChatGPT said:</h6><p>Answer</p></section>`);
+  try {
+    const data = await new app.Collector().collect({ mode: 'loaded' });
+    assert.deepEqual(plain(data.messages.map(m => m.text)), ['Question', 'Answer']);
+    assert.ok(!app.format.markdown(data).includes('said:'));
+  } finally { dom.window.close(); }
+});
+
+test('actual message text and Markdown headings matching role labels are preserved', async () => {
+  const { dom, app } = environment(`
+    <div data-turn-key="exchange">
+      <h4 data-conversation-role="user">${localizedRoleLabel}</h4>
+      <div data-content-search-unit-key="exchange:0:user"><div data-user-message-bubble="true">${localizedRoleLabel}</div></div>
+      <div data-content-search-unit-key="exchange:2:assistant"><div class="MarkdownRoot"><h4>You said:</h4><p>${localizedRoleLabel}</p><pre><code>&lt;h4 data-conversation-role="user"&gt;You said:&lt;/h4&gt;</code></pre></div></div>
+    </div>`);
+  try {
+    const data = await new app.Collector().collect({ mode: 'loaded' });
+    assert.equal(data.messages.length, 2);
+    assert.equal(data.messages[0].text, localizedRoleLabel);
+    assert.ok(data.messages[1].markdown.includes('#### You said:'));
+    assert.ok(data.messages[1].text.includes(localizedRoleLabel));
+    assert.ok(data.messages[1].markdown.includes('<h4 data-conversation-role="user">You said:</h4>'));
+  } finally { dom.window.close(); }
+});
