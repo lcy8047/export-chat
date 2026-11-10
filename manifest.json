@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Export — Markdown & JSON",
+  "version": "0.1.0",
+  "description": "현재 ChatGPT 대화를 기기 안에서 Markdown 또는 JSON으로 저장합니다.",
+  "minimum_chrome_version": "102",
+  "permissions": ["activeTab", "scripting"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Chat Export · 현재 대화 저장" }
+}
