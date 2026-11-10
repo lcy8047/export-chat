@@ -18,7 +18,7 @@ The extension runs without Node.js or `npm install`.
 1. Pull the latest changes or replace the unpacked files.
 2. Open `chrome://extensions` and click **Reload** on **Chat Export**.
 3. **Reload the ChatGPT conversation tab as well** to remove the previous injected collector.
-4. Reopen the extension. The panel header should show **0.2.0**.
+4. Reopen the extension. The panel header should show **0.2.1**.
 
 ## Usage
 
@@ -28,6 +28,7 @@ The extension runs without Node.js or `npm install`.
 - After collection, review the preview of the first four messages.
 - The **File name** field is prefilled with the original automatic name: `chat-export-` followed by the sanitized conversation title. Leave it unchanged to keep that default, or enter your own name.
 - Click **Save Markdown** or **Save JSON**. The selected format's `.md` or `.json` extension is added automatically. A custom name ending with either extension is adjusted to the selected format without duplicating the extension.
+- The filename field runs in a local iframe so page-level keyboard shortcuts cannot redirect typing to the ChatGPT composer. Normal selection, clipboard shortcuts, and IME composition remain available. The iframe makes no network request and requires no additional permission.
 - An empty or unusable custom name falls back to the original default. Filename characters that cannot be used in paths are replaced. Changing the filename does not change the conversation title inside the exported content.
 - Closing the panel does not stop collection. Click the extension icon to reopen it.
 - Keep the tab open and avoid navigating, scrolling, editing messages, or regenerating responses during collection.
@@ -74,8 +75,9 @@ The extension has not yet been tested directly against the current signed-in Cha
 | `background.js` | Toolbar click handling, site validation, and script injection |
 | `collector.js` | Message identification, ordering, scrolling, and interruption handling |
 | `format.js` | Message extraction, Markdown conversion, and filename sanitization |
-| `panel.js` | Isolated Shadow DOM panel, status, previews, and downloads |
+| `panel.js` | Shadow DOM panel, isolated iframe filename field, status, previews, and downloads |
 | `tests/export.test.cjs` | Automated tests using DOM fixtures |
+| `tests/browser-focus.cjs` | Chromium regression checks for filename focus, clipboard, IME, and downloads |
 
 ## Development checks
 
@@ -86,3 +88,13 @@ npm test
 ```
 
 `jsdom` is used only for development tests. Tests cover legacy and grouped search-unit layouts, message discovery outside the first main element, initial rendering delays, DOM replacement during virtual scrolling, repeated-message preservation, code fences, tables, formulas, interruptions, limits, panel reopening, role-label exclusion with matching message-text preservation, editable download filenames with unchanged defaults, and safe text rendering. They do not exercise Chrome extension APIs or a signed-in ChatGPT session.
+
+
+To run the native browser regression check, install Chromium once and run:
+
+```sh
+npx playwright install chromium
+npm run test:browser
+```
+
+Playwright is a development dependency only. This check uses a local fixture served through intercepted requests and a CDP isolated world to model a content script. A parent-page capture listener deliberately steals composer focus if filename keystrokes escape. The check exercises native typing, selection, deletion, clipboard paste, IME composition, and a browser download; it also verifies that typing in the page composer still works. It does not access a signed-in ChatGPT account.

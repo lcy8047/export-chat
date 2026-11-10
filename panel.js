@@ -4,6 +4,7 @@
   const host = document.createElement("div");
   host.style.cssText = "all:initial;position:fixed;right:20px;bottom:20px;z-index:2147483647";
   const shadow = host.attachShadow({ mode: "closed" });
+  document.documentElement.append(host);
   const style = document.createElement("style");
   style.textContent = `
     :host { all: initial; }
@@ -18,7 +19,7 @@
     .eyebrow { color: #28755d; font-size: 10px; letter-spacing: .16em; font-weight: 800; }
     .muted, small { color: #647369; }
     label { display: block; font-weight: 650; margin: 18px 0 6px; }
-    select, input { width: 100%; padding: 10px; background: white; color: inherit;
+    select { width: 100%; padding: 10px; background: white; color: inherit;
       border: 1px solid #bdcec1; border-radius: 8px; font: inherit; }
     .row { display: flex; gap: 8px; margin: 12px 0; }
     button { flex: 1; padding: 10px; border: 1px solid #bdcec1; border-radius: 8px;
@@ -26,7 +27,7 @@
     button.primary { background: #21684f; color: white; border-color: #21684f; }
     button.close { flex: 0; float: right; padding: 2px 8px; font-size: 16px; }
     button:disabled { opacity: .45; cursor: default; }
-    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #6aad91; outline-offset: 2px; }
+    button:focus-visible, select:focus-visible { outline: 3px solid #6aad91; outline-offset: 2px; }
     .status { padding: 12px; background: #eaf1e8; border: 1px solid #d5e0d2;
       border-radius: 10px; margin: 14px 0; }
     .status p { margin: 4px 0 0; font-size: 12px; }
@@ -57,8 +58,8 @@
   const panel = el("section", "", shadow);
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "Chat Export");
-  button(panel, "×", () => { host.hidden = true; }, "close").setAttribute("aria-label", "Close · Collection continues");
-  el("span", "CHAT EXPORT · 0.2.0", panel, "eyebrow");
+  button(panel, "×", () => { host.hidden = true; host.style.display = "none"; }, "close").setAttribute("aria-label", "Close · Collection continues");
+  el("span", "CHAT EXPORT · 0.2.1", panel, "eyebrow");
   el("h1", "Keep a copy of your conversation.", panel);
   el("p", "Save the selected conversation branch as Markdown or JSON.", panel, "muted");
   const label = el("label", "Collection scope", panel);
@@ -89,9 +90,30 @@
   result.hidden = true;
   el("h2", "Preview · First 4 messages", result);
   const preview = el("div", "", result, "preview");
-  const filenameLabel = el("label", "File name", result);
+  // A separate document keeps typing away from capture-phase page shortcuts.
+  // Shadow DOM alone retargets the input to the host before those handlers run.
+  // The local about:blank frame makes no network requests and needs no permission.
+  const filenameFrame = el("iframe", "", result);
+  filenameFrame.title = "Export file name";
+  filenameFrame.style.cssText = "display:block;width:100%;height:142px;border:0;background:transparent";
+  const filenameDocument = filenameFrame.contentDocument;
+  filenameDocument.documentElement.lang = "en";
+  filenameDocument.title = "Export file name";
+  const filenameStyle = el("style", `
+    html { color-scheme: light; }
+    body { margin: 0; background: transparent; color: #23352c; font: 13px/1.65 system-ui, -apple-system, sans-serif; }
+    .field { display: flow-root; padding: 3px; }
+    label { display: block; font-weight: 650; margin: 14px 0 6px; }
+    input { box-sizing: border-box; width: 100%; padding: 10px; background: white; color: inherit;
+      border: 1px solid #bdcec1; border-radius: 8px; font: inherit; }
+    input:disabled { opacity: .45; }
+    input:focus-visible { outline: 3px solid #6aad91; outline-offset: 0; }
+    small { display: block; margin-top: 4px; color: #647369; font-size: 11px; }
+  `, filenameDocument.head);
+  const filenameSurface = el("div", "", filenameDocument.body, "field");
+  const filenameLabel = el("label", "File name", filenameSurface);
   filenameLabel.htmlFor = "chat-export-filename";
-  const filenameInput = el("input", "", result);
+  const filenameInput = el("input", "", filenameSurface);
   filenameInput.id = "chat-export-filename";
   filenameInput.type = "text";
   filenameInput.autocomplete = "off";
@@ -103,14 +125,18 @@
   filenameInput.addEventListener("input", () => {
     filenameEdited = filenameInput.value !== filenameInput.defaultValue;
   });
-  const filenameHelp = el("small", "The .md or .json extension is added automatically. Leave the name unchanged to use the default.", result);
+  const filenameHelp = el("small", "The .md or .json extension is added automatically. Leave the name unchanged to use the default.", filenameSurface);
   filenameHelp.id = "chat-export-filename-help";
   filenameInput.setAttribute("aria-describedby", filenameHelp.id);
   const downloads = el("div", "", result, "row");
   const md = button(downloads, "Save Markdown", () => download("md"));
   const json = button(downloads, "Save JSON", () => download("json"));
   el("footer", "Processed locally in your browser. Original attachments and alternative regenerated branches are excluded. Reloading the page clears collected results.", panel);
-  document.documentElement.append(host);
+  function resizeFilenameFrame() {
+    const height = Math.ceil(filenameSurface.getBoundingClientRect().height);
+    if (height > 0) filenameFrame.style.height = `${height}px`;
+  }
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(resizeFilenameFrame).observe(filenameSurface);
 
   const reasons = {
     "loaded-only": "Loaded messages collected",
@@ -146,6 +172,7 @@
     warnings.replaceChildren();
     data.collection.warnings.forEach(text => el("li", text, warnings));
     result.hidden = !data.messages.length;
+    resizeFilenameFrame();
     preview.replaceChildren();
     for (const message of data.messages.slice(0, 4)) {
       const row = el("div", "", preview, "message");
@@ -185,7 +212,17 @@
   }
   app.open = () => {
     host.hidden = false;
-    if (!host.isConnected) document.documentElement.append(host);
+    host.style.display = "block";
+    if (!host.isConnected) {
+      document.documentElement.append(host);
+      // Reattaching an iframe replaces its document; retain the field and its value.
+      const restoredDocument = filenameFrame.contentDocument;
+      restoredDocument.documentElement.lang = "en";
+      restoredDocument.title = "Export file name";
+      restoredDocument.head.append(filenameStyle);
+      restoredDocument.body.append(filenameSurface);
+    }
+    resizeFilenameFrame();
     start.focus();
   };
   render();

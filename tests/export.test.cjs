@@ -457,7 +457,7 @@ test('the filename field is prefilled and unchanged downloads use the previous d
   const { dom, app, shadow, downloads, click, collect } = downloadPanelEnvironment();
   try {
     await collect();
-    assert.equal(shadow.querySelector('#chat-export-filename').value, 'chat-export-Test conversation');
+    assert.equal(shadow.querySelector('iframe').contentDocument.querySelector('#chat-export-filename').value, 'chat-export-Test conversation');
     click('Save Markdown');
     click('Save JSON');
     assert.deepEqual(downloads.map(item => item.filename), [
@@ -472,7 +472,7 @@ test('editing the filename affects both download formats without changing the co
   const { dom, window, shadow, downloads, click, collect } = downloadPanelEnvironment();
   try {
     await collect();
-    const input = shadow.querySelector('#chat-export-filename');
+    const input = shadow.querySelector('iframe').contentDocument.querySelector('#chat-export-filename');
     input.value = 'My research';
     input.dispatchEvent(new window.Event('input', { bubbles: true }));
     click('Save Markdown');
@@ -485,5 +485,45 @@ test('editing the filename affects both download formats without changing the co
     input.dispatchEvent(new window.Event('input', { bubbles: true }));
     click('Save Markdown');
     assert.equal(downloads[2].filename, 'chat-export-Test conversation.md');
+  } finally { dom.window.close(); }
+});
+
+test('typing a filename never reaches capture-phase composer shortcuts on the parent page', async () => {
+  const { dom, window, shadow, collect } = downloadPanelEnvironment();
+  try {
+    await collect();
+    const composer = window.document.createElement('textarea');
+    window.document.body.append(composer);
+    let capturedKeys = 0;
+    window.document.addEventListener('keydown', () => {
+      capturedKeys++;
+      composer.focus();
+    }, true);
+    const input = shadow.querySelector('iframe').contentDocument.querySelector('#chat-export-filename');
+    input.focus();
+    const event = new window.KeyboardEvent('keydown', { key: 'a', bubbles: true, composed: true, cancelable: true });
+    input.dispatchEvent(event);
+    assert.equal(capturedKeys, 0);
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(input.ownerDocument.activeElement, input);
+    composer.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    assert.equal(capturedKeys, 1);
+  } finally { dom.window.close(); }
+});
+
+test('filename editing keeps clipboard, input, and composition events local without canceling native editing', async () => {
+  const { dom, window, shadow, collect } = downloadPanelEnvironment();
+  try {
+    await collect();
+    const input = shadow.querySelector('iframe').contentDocument.querySelector('#chat-export-filename');
+    const events = ['keydown', 'keypress', 'keyup', 'beforeinput', 'input', 'copy', 'cut', 'paste', 'compositionstart', 'compositionupdate', 'compositionend', 'pointerdown'];
+    const escapedEvents = [];
+    for (const type of events) {
+      window.document.addEventListener(type, () => escapedEvents.push(type), true);
+      const event = new window.Event(type, { bubbles: true, composed: true, cancelable: true });
+      assert.equal(input.dispatchEvent(event), true);
+      assert.equal(event.defaultPrevented, false);
+    }
+    assert.deepEqual(escapedEvents, []);
   } finally { dom.window.close(); }
 });
