@@ -3,14 +3,14 @@ chrome.action.onClicked.addListener(async (tab) => {
   try {
     const url = new URL(tab.url || "");
     if (!tab.id || url.protocol !== "https:" || url.hostname !== "chatgpt.com") {
-      throw new Error("ChatGPT 대화 탭에서 확장프로그램을 실행하세요.");
+      throw new Error("Open a ChatGPT conversation tab before running the extension.");
     }
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["format.js", "collector.js", "panel.js"]
     });
     await chrome.action.setBadgeText({ tabId: tab.id, text: "" });
-    await chrome.action.setTitle({ tabId: tab.id, title: "Chat Export · 현재 대화 저장" });
+    await chrome.action.setTitle({ tabId: tab.id, title: "Chat Export · Save current conversation" });
   } catch (error) {
     if (!tab.id) return;
     await chrome.action.setBadgeText({ tabId: tab.id, text: "!" });

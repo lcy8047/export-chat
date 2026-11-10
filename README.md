@@ -1,65 +1,65 @@
 # Chat Export
 
-현재 ChatGPT 대화의 선택된 분기를 **Markdown / JSON** 파일로 저장하는 Chrome Manifest V3 확장프로그램입니다.
+A Chrome Manifest V3 extension that saves the selected branch of the current ChatGPT conversation as **Markdown or JSON**.
 
-## 설치
+## Installation
 
-1. 이 폴더를 다운로드하거나 `chat-export.zip`을 별도 폴더에 압축 해제합니다.
-2. Chrome 주소창에서 `chrome://extensions`를 엽니다.
-3. 오른쪽 위 **개발자 모드**를 켭니다.
-4. **압축해제된 확장 프로그램을 로드합니다**를 누릅니다.
-5. `manifest.json`이 들어 있는 폴더를 선택합니다.
-6. `https://chatgpt.com`에서 대화를 열고 확장프로그램 목록의 **Chat Export**를 클릭합니다.
+1. Download this repository, or extract `chat-export.zip` into a separate folder if you have a packaged copy.
+2. Open `chrome://extensions` in Chrome.
+3. Enable **Developer mode** in the upper-right corner.
+4. Click **Load unpacked**.
+5. Select the folder containing `manifest.json`.
+6. Open a conversation at `https://chatgpt.com` and click **Chat Export** in the extensions menu.
 
-확장프로그램 실행에는 Node.js 설치나 `npm install`이 필요하지 않습니다.
+The extension runs without Node.js or `npm install`.
 
-## 사용
+## Usage
 
-- **긴 대화**: 현재 위치에서 위로 이동하며 수집한 뒤 아래쪽까지 훑습니다. 스크롤 높이·메시지 개수·본문 길이가 경계에서 세 번 안정되면 종료합니다.
-- **로드된 메시지만**: DOM에 이미 존재하는 메시지만 수집합니다. 화면에 보이지 않더라도 DOM에 존재하면 포함될 수 있습니다.
-- **중지**: 지금까지 수집한 결과를 남기고 종료합니다.
-- 수집이 끝나면 처음 네 메시지의 미리보기를 확인하고 **Markdown 저장** 또는 **JSON 저장**을 누릅니다.
-- 패널을 닫아도 수집은 계속됩니다. 확장프로그램 아이콘을 다시 누르면 다시 열립니다.
-- 수집 중에는 탭을 열어 두고 대화 이동·스크롤·메시지 수정·재생성을 잠시 멈춰 주세요.
-- 작업은 최대 90초 / 각 방향 240회 스크롤로 제한됩니다. 제한에 걸려도 수집된 메시지는 저장할 수 있습니다.
-- 같은 대화에 머무르면 완료 후 시작 전 스크롤 위치로 복원합니다.
-- 대화 URL이 바뀌면 새 대화 내용을 섞지 않고 중단합니다.
-- 결과는 메모리에만 남습니다. 새로고침하거나 탭을 닫으면 사라집니다. 페이지 이동 후에도 패널이 남아 있다면 기존 결과는 원래 대화 URL과 제목으로 저장됩니다.
+- **Long conversation**: Collects messages while scrolling up from the current position, then scans down to the bottom. A boundary is considered observed after the scroll height, message count, and content length remain stable for three checks.
+- **Messages already loaded on this page**: Collects only messages already present in the DOM. This may include messages outside the visible viewport.
+- **Stop**: Ends collection and retains the messages captured so far.
+- After collection, review the preview of the first four messages and click **Save Markdown** or **Save JSON**.
+- Closing the panel does not stop collection. Click the extension icon to reopen it.
+- Keep the tab open and avoid navigating, scrolling, editing messages, or regenerating responses during collection.
+- Collection is limited to 90 seconds and 240 scroll steps per direction. Partial results remain available when a limit is reached.
+- If you remain in the same conversation, the original scroll position is restored after collection.
+- If the conversation URL changes, collection stops before capturing content from the new conversation.
+- Results are stored only in memory. Reloading or closing the tab clears them. If the panel remains after navigation, existing results are still exported with their original conversation URL and title.
 
-## 저장 범위와 한계
+## Export scope and limitations
 
-**수집 성공과 전문의 완전성은 다릅니다.** DOM만으로는 서버의 전체 대화와 비교할 수 없기 때문에 모든 결과에 `completeness: "unverified"`를 기록합니다. 스크롤 양 끝을 확인했다는 상태도 전문 보증을 의미하지 않습니다.
+**Finishing collection does not establish transcript completeness.** The extension cannot compare the DOM against the complete conversation stored on the server, so every export records `completeness: "unverified"`. Observing both scroll boundaries does not guarantee a complete transcript.
 
-- 현재 선택된 대화 분기의 렌더링된 메시지를 대상으로 합니다. 다른 재생성 답변이나 과거 수정 분기는 탐색하지 않습니다.
-- 렌더링되지 않은 서버 데이터와 숨겨진 내부 추론은 수집하지 않습니다.
-- 이미지 설명·다운로드 링크에서 확인되는 첨부파일 이름은 기록할 수 있지만 첨부파일 원본을 다운로드하거나 포함하지 않습니다.
-- Markdown은 제목·강조·링크·코드·목록·인용·일반 표·KaTeX 수식을 처리합니다. 복잡한 병합 셀과 특수 UI의 원형 보존은 지원하지 않습니다.
-- 메시지 ID를 우선 사용하고, 없으면 대화 턴 속성 또는 DOM 노드 식별자로 대체합니다. DOM 노드 식별자로 대체한 경우 다시 렌더링될 때 중복될 수 있어 경고를 남깁니다.
-- 수집 중 생성되는 답변은 부분 내용일 수 있습니다. 생성이 끝난 뒤 다시 수집하세요.
-- 지연 로딩, 백그라운드 탭의 타이머 제한, ChatGPT UI 변경으로 일부 내용이 누락될 수 있습니다.
+- Only rendered messages in the currently selected conversation branch are collected. Alternative regenerated responses and earlier edited branches are not explored.
+- Server data that has not been rendered and hidden internal reasoning are not collected.
+- Image descriptions and attachment names available through download links may be recorded. Original attachments are neither downloaded nor embedded.
+- Markdown conversion handles headings, emphasis, links, code, lists, blockquotes, basic tables, and KaTeX formulas. Complex merged cells and specialized interfaces are not preserved exactly.
+- Message IDs are preferred. Conversation-turn attributes or DOM node identities are used as fallbacks. DOM node identities may produce duplicates when nodes are recreated; the export includes a warning when this fallback is used.
+- Responses generated during collection may be incomplete. Collect again after generation finishes.
+- Lazy loading, background-tab timer throttling, and ChatGPT interface changes may cause omissions.
 
-ChatGPT의 현재 로그인 화면에서는 아직 직접 검증하지 않았습니다. 우선 짧은 대화와 코드·표가 있는 대화를 저장해 원본과 비교해 주세요. 메시지를 찾지 못한다면 `collector.js`의 역할/턴 선택자와 `format.js`의 본문 선택자를 확인하면 됩니다.
+The extension has not yet been tested directly against the current signed-in ChatGPT interface. Start with a short conversation and one containing code and tables, then compare the exports with the originals. If no messages are found, check the role and turn selectors in `collector.js` and the message-body selectors in `format.js`.
 
-## 개인정보와 권한
+## Privacy and permissions
 
-- 런타임에서 외부 서버로 전송하지 않으며 분석·추적 코드를 포함하지 않습니다.
-- `activeTab`, `scripting` 권한만 사용합니다. 사용자가 툴바 버튼을 클릭할 때 ChatGPT 탭에 스크립트를 주입합니다.
-- 쿠키·인증 토큰을 읽거나 내부 API를 호출하지 않습니다.
-- 수집 결과는 기기에 파일로 저장합니다. 저장 파일에는 대화 본문과 본문에 있는 링크가 포함됩니다.
-- 표시할 대화 텍스트는 `textContent`를 사용하여 HTML로 실행되지 않도록 합니다.
+- No data is sent to external servers at runtime. The extension contains no analytics or tracking code.
+- Only the `activeTab` and `scripting` permissions are used. Scripts are injected into the ChatGPT tab when you click the toolbar button.
+- Cookies and authentication tokens are not read, and internal APIs are not called.
+- Exports are saved as files on your device. They include conversation content and links appearing in that content.
+- Conversation previews use `textContent` so message text is not executed as HTML.
 
-## 파일
+## Files
 
-| 파일 | 역할 |
+| File | Purpose |
 | --- | --- |
-| `manifest.json` | MV3 설정과 권한 |
-| `background.js` | 툴바 클릭, 사이트 확인, 스크립트 주입 |
-| `collector.js` | 메시지 식별·순서 병합·스크롤·중단 처리 |
-| `format.js` | 본문 추출, Markdown 변환, 파일명 처리 |
-| `panel.js` | 격리된 Shadow DOM 패널, 상태·미리보기·다운로드 |
-| `tests/export.test.cjs` | DOM fixture 기반 자동 검증 |
+| `manifest.json` | Manifest V3 configuration and permissions |
+| `background.js` | Toolbar click handling, site validation, and script injection |
+| `collector.js` | Message identification, ordering, scrolling, and interruption handling |
+| `format.js` | Message extraction, Markdown conversion, and filename sanitization |
+| `panel.js` | Isolated Shadow DOM panel, status, previews, and downloads |
+| `tests/export.test.cjs` | Automated tests using DOM fixtures |
 
-## 개발 검증
+## Development checks
 
 ```sh
 npm ci
@@ -67,4 +67,4 @@ npm run check
 npm test
 ```
 
-`jsdom`은 개발 테스트에만 사용합니다. 테스트는 가상 스크롤 DOM 교체, 동일 문장 보존, 코드 펜스·표·수식, 중지·이동·제한, 패널 재실행 및 텍스트 표시를 검증합니다. 실제 Chrome 확장 API나 로그인된 ChatGPT 서버를 검증하는 테스트는 아닙니다.
+`jsdom` is used only for development tests. Tests cover DOM replacement during virtual scrolling, repeated-message preservation, code fences, tables, formulas, interruptions, limits, panel reopening, and safe text rendering. They do not exercise Chrome extension APIs or a signed-in ChatGPT session.

@@ -2,7 +2,7 @@
   const app = globalThis.__chatExportV1 ||= {};
   if (app.Collector) return;
   const ROLE_SELECTOR = "[data-message-author-role]";
-  const STREAM_SELECTOR = '[data-testid="stop-button"],button[aria-label="Stop generating"],button[aria-label="응답 생성 중지"]';
+  const STREAM_SELECTOR = '[data-testid="stop-button"],button[aria-label="Stop generating"],button[aria-label="\uc751\ub2f5 \uc0dd\uc131 \uc911\uc9c0"]';
 
   class Collector {
     constructor({ onUpdate = () => {}, settleMs = 650, maxDurationMs = 90000, maxSteps = 240 } = {}) {
@@ -104,8 +104,8 @@
       return length;
     }
     async collect({ mode = "scroll" } = {}) {
-      if (this.running) throw new Error("이미 수집 중입니다.");
-      if (!["scroll", "loaded"].includes(mode)) throw new Error("지원하지 않는 수집 모드입니다.");
+      if (this.running) throw new Error("Collection is already in progress.");
+      if (!["scroll", "loaded"].includes(mode)) throw new Error("Unsupported collection mode.");
       this.running = true;
       this.stopped = false;
       this.data = null;
@@ -115,7 +115,7 @@
       this.fallbackCounter = 0;
       this.weakIdentity = this.unanchoredOrder = this.sawStreaming = false;
       this.url = location.href;
-      this.title = document.title || "ChatGPT 대화";
+      this.title = document.title || "ChatGPT conversation";
       this.deadline = Date.now() + this.maxDurationMs;
       const scroller = this.findScroller(this.nodes()[0]);
       const originalTop = scroller.scrollTop;
@@ -125,7 +125,7 @@
       let failure = "";
       try {
         if (!this.capture("down").length) {
-          throw new Error("메시지를 찾지 못했습니다. 대화를 연 뒤 다시 시도하세요. 페이지 구조가 변경되었을 수도 있습니다.");
+          throw new Error("No messages found. Open a conversation and try again. The page structure may have changed.");
         }
         if (mode === "scroll") {
           scroller.style.setProperty("scroll-behavior", "auto", "important");
@@ -138,12 +138,12 @@
         failure = String(error.message || error);
       } finally {
         const warnings = [
-          "DOM 수집 결과입니다. 대화 전문의 완전성은 보장하지 않습니다.",
-          "현재 선택된 분기만 포함하며 첨부파일 원본과 다른 재생성 분기는 포함하지 않습니다."
+          "Collected from the DOM. A complete conversation transcript cannot be guaranteed.",
+          "Only the selected branch is included. Original attachments and alternative regenerated branches are excluded."
         ];
-        if (this.weakIdentity) warnings.push("일부 메시지의 고유 ID를 확인하지 못했습니다. DOM 재생성 시 중복이 생길 수 있습니다.");
-        if (this.unanchoredOrder) warnings.push("일부 화면 사이에 겹치는 메시지가 없어 스크롤 방향으로 순서를 추정했습니다.");
-        if (this.sawStreaming) warnings.push("수집 중 답변 생성이 감지되었습니다. 생성이 끝난 뒤 다시 수집하는 것이 좋습니다.");
+        if (this.weakIdentity) warnings.push("Some message IDs could not be identified. Recreated DOM nodes may produce duplicates.");
+        if (this.unanchoredOrder) warnings.push("Some viewport snapshots had no overlapping messages. Their order was inferred from the scroll direction.");
+        if (this.sawStreaming) warnings.push("Response generation was detected during collection. Collect again after generation finishes.");
         if (failure) warnings.push(failure);
         this.data = {
           schemaVersion: 1, title: this.title, url: this.url,

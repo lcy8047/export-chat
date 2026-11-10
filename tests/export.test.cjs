@@ -6,7 +6,7 @@ const { JSDOM } = require('jsdom');
 const root = path.join(__dirname, '..');
 
 function environment(html = '') {
-  const dom = new JSDOM(`<!doctype html><title>테스트 대화</title><main>${html}</main>`, {
+  const dom = new JSDOM(`<!doctype html><title>Test conversation</title><main>${html}</main>`, {
     url: 'https://chatgpt.com/c/example', runScripts: 'outside-only'
   });
   for (const file of ['format.js', 'collector.js']) dom.window.eval(fs.readFileSync(path.join(root, file), 'utf8'));
@@ -22,42 +22,42 @@ test('Markdown preserves code fences, blank lines, links, tables, math and image
   const { dom, window, app } = environment();
   try {
     const node = window.document.createElement('div');
-    node.innerHTML = '<h2>제목</h2><p><strong>굵게</strong> <a href="https://example.com/a?q=1">출처</a></p>' +
+    node.innerHTML = '<h2>Title</h2><p><strong>Bold</strong> <a href="https://example.com/a?q=1">Source</a></p>' +
       '<pre><code class="language-js">const x = "```";\n\n\nconsole.log(x);\n</code></pre>' +
-      '<table><tr><th>이름</th><th>값</th></tr><tr><td>A|B</td><td>1<br>2</td></tr></table>' +
+      '<table><tr><th>Name</th><th>Value</th></tr><tr><td>A|B</td><td>1<br>2</td></tr></table>' +
       '<span class="katex"><annotation encoding="application/x-tex">x^2</annotation></span>' +
-      '<img alt="사진" src="https://example.com/private-token"><button>복사</button>' +
-      '<a href="javascript:alert(1)">위험 링크</a>';
+      '<img alt="Photo" src="https://example.com/private-token"><button>Copy</button>' +
+      '<a href="javascript:alert(1)">Unsafe link</a>';
     const md = app.format.toMarkdown(node);
-    assert.match(md, /## 제목/);
-    assert.match(md, /\*\*굵게\*\*/);
-    assert.match(md, /\[출처\]\(<https:\/\/example.com\/a\?q=1>\)/);
+    assert.match(md, /## Title/);
+    assert.match(md, /\*\*Bold\*\*/);
+    assert.match(md, /\[Source\]\(<https:\/\/example.com\/a\?q=1>\)/);
     assert.ok(md.includes('````js\nconst x = "```";\n\n\nconsole.log(x);\n````'));
     assert.ok(md.includes('| A\\|B | 1<br>2 |'));
     assert.ok(md.includes('$x^2$'));
-    assert.ok(md.includes('[이미지: 사진]'));
+    assert.ok(md.includes('[Image: Photo]'));
     assert.ok(!md.includes('private-token'));
     assert.ok(!md.includes('javascript:'));
-    assert.ok(!md.includes('복사'));
+    assert.ok(!md.includes('Copy'));
   } finally { dom.window.close(); }
 });
 
 test('user newlines survive and assistant action controls are excluded', async () => {
   const { dom, app } = environment(
-    '<article data-message-id="u" data-message-author-role="user"><div class="whitespace-pre-wrap">첫째\n\n둘째</div></article>' +
-    '<article data-message-id="a" data-message-author-role="assistant"><div class="markdown"><p>대답</p></div><button>복사</button><span>기타 UI</span></article>');
+    '<article data-message-id="u" data-message-author-role="user"><div class="whitespace-pre-wrap">First\n\nSecond</div></article>' +
+    '<article data-message-id="a" data-message-author-role="assistant"><div class="markdown"><p>Answer</p></div><button>Copy</button><span>Other UI</span></article>');
   try {
     const data = await new app.Collector().collect({ mode: 'loaded' });
-    assert.equal(data.messages[0].markdown, '첫째\n\n둘째');
-    assert.equal(data.messages[1].markdown, '대답');
+    assert.equal(data.messages[0].markdown, 'First\n\nSecond');
+    assert.equal(data.messages[1].markdown, 'Answer');
     assert.equal(data.completeness, 'unverified');
     assert.equal(data.collection.stopReason, 'loaded-only');
-    assert.ok(app.format.markdown(data).includes('완전성: 미확인'));
+    assert.ok(app.format.markdown(data).includes('Completeness: Unverified'));
   } finally { dom.window.close(); }
 });
 
 test('identical questions in different turns remain separate messages', async () => {
-  const { dom, app } = environment(message('one', '같은 질문') + message('two', '같은 질문'));
+  const { dom, app } = environment(message('one', 'Same question') + message('two', 'Same question'));
   try {
     const data = await new app.Collector().collect({ mode: 'loaded' });
     assert.equal(data.messages.length, 2);
@@ -73,7 +73,7 @@ function virtualEnvironment() {
     const first = Math.floor(top / 500);
     const last = Math.min(5, Math.floor((top + 499) / 500));
     scroller.innerHTML = Array.from({ length: last - first + 1 }, (_, i) =>
-      message(String(first + i), '내용 ' + (first + i))).join('');
+      message(String(first + i), 'Content ' + (first + i))).join('');
   };
   Object.defineProperties(scroller, {
     clientHeight: { get: () => 500 }, scrollHeight: { get: () => 3000 },
@@ -116,21 +116,21 @@ test('conversation navigation aborts before new conversation content is captured
       if (changed) return;
       changed = true;
       dom.reconfigure({ url: 'https://chatgpt.com/c/different' });
-      scroller.innerHTML = message('new-conversation', '다른 대화');
+      scroller.innerHTML = message('new-conversation', 'Different conversation');
     } });
     const data = await collector.collect({ mode: 'scroll' });
     assert.equal(data.collection.stopReason, 'conversation-changed');
     assert.equal(data.url, 'https://chatgpt.com/c/example');
-    assert.ok(!data.messages.some(m => m.text === '다른 대화'));
+    assert.ok(!data.messages.some(m => m.text === 'Different conversation'));
   } finally { dom.window.close(); }
 });
 
 test('missing message IDs and generation in progress are explicitly reported', async () => {
-  const { dom, app } = environment('<div data-message-author-role="user">질문</div><button data-testid="stop-button">중지</button>');
+  const { dom, app } = environment('<div data-message-author-role="user">Question</div><button data-testid="stop-button">Stop</button>');
   try {
     const data = await new app.Collector().collect({ mode: 'loaded' });
-    assert.ok(data.collection.warnings.some(w => w.includes('고유 ID')));
-    assert.ok(data.collection.warnings.some(w => w.includes('답변 생성')));
+    assert.ok(data.collection.warnings.some(w => w.includes('message IDs')));
+    assert.ok(data.collection.warnings.some(w => w.includes('Response generation')));
   } finally { dom.window.close(); }
 });
 
@@ -140,12 +140,12 @@ test('empty pages produce a useful error and never a successful empty export', a
     const data = await new app.Collector().collect({ mode: 'loaded' });
     assert.equal(data.collection.stopReason, 'error');
     assert.equal(data.messages.length, 0);
-    assert.ok(data.collection.warnings.some(w => w.includes('메시지를 찾지 못했습니다')));
+    assert.ok(data.collection.warnings.some(w => w.includes('No messages found')));
   } finally { dom.window.close(); }
 });
 
 test('time and step limits preserve partial results', async () => {
-  const { dom, app } = environment(message('one', '질문'));
+  const { dom, app } = environment(message('one', 'Question'));
   try {
     const timed = await new app.Collector({ maxDurationMs: 0 }).collect({ mode: 'scroll' });
     assert.equal(timed.collection.stopReason, 'time-limit');
@@ -159,7 +159,7 @@ test('time and step limits preserve partial results', async () => {
 test('filenames remove path separators and control characters', () => {
   const { dom, app } = environment();
   try {
-    const name = app.format.filename('../대화/제목\\x:*?\n', 'json');
+    const name = app.format.filename('../conversation/Title\\x:*?\n', 'json');
     assert.ok(name.endsWith('.json'));
     assert.ok(!/[\\/:*?\n]/.test(name));
   } finally { dom.window.close(); }
@@ -180,10 +180,10 @@ test('reopening the panel does not duplicate it; previews treat conversation HTM
     assert.equal(window.document.documentElement.querySelectorAll(':scope > div').length, 1);
     const select = shadow.querySelector('select');
     select.value = 'loaded';
-    [...shadow.querySelectorAll('button')].find(b => b.textContent === '수집 시작').click();
+    [...shadow.querySelectorAll('button')].find(b => b.textContent === 'Start collection').click();
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.ok(shadow.querySelector('.preview').textContent.includes('<img src=x onerror=alert(1)>'));
     assert.equal(shadow.querySelector('.preview img'), null);
-    assert.equal([...shadow.querySelectorAll('button')].find(b => b.textContent === 'JSON 저장').disabled, false);
+    assert.equal([...shadow.querySelectorAll('button')].find(b => b.textContent === 'Save JSON').disabled, false);
   } finally { dom.window.close(); }
 });

@@ -50,7 +50,7 @@
         const url = safeUrl(node.getAttribute("href"), base);
         return url ? `[${children()}](<${url.replace(/>/g, "%3E")}>)` : children();
       }
-      if (tag === "img") return `[이미지: ${escape(node.getAttribute("alt") || "설명 없음")}]`;
+      if (tag === "img") return `[Image: ${escape(node.getAttribute("alt") || "No description")}]`;
       if (tag === "blockquote") return block(children().trim().split("\n").map(s => `> ${s}`).join("\n"));
       if (["ul", "ol"].includes(tag)) {
         const start = Number(node.getAttribute("start") || 1);
@@ -101,15 +101,15 @@
   }
 
   function markdown(data) {
-    const title = String(data.title || "ChatGPT 대화").replace(/[\r\n]+/g, " ");
+    const title = String(data.title || "ChatGPT conversation").replace(/[\r\n]+/g, " ");
     const metadata = [
-      `원본: ${data.url}`, `저장 시각: ${data.exportedAt}`,
-      `범위: 현재 선택된 대화 분기 · 메시지 ${data.messages.length}개`,
-      `완전성: 미확인 · 종료 사유: ${data.collection.stopReason}`,
+      `Source: ${data.url}`, `Exported at: ${data.exportedAt}`,
+      `Scope: Currently selected conversation branch · ${data.messages.length} messages`,
+      `Completeness: Unverified · Stop reason: ${data.collection.stopReason}`,
       ...data.collection.warnings
     ].map(line => "> " + String(line).replace(/[\r\n]+/g, " ")).join("\n");
     return `# ${escape(title)}\n\n${metadata}\n\n` + data.messages.map((message, index) =>
-      `## ${index + 1}. ${escape(message.role)}\n\n${message.markdown || "(텍스트 없음)"}\n`
+      `## ${index + 1}. ${escape(message.role)}\n\n${message.markdown || "(No text)"}\n`
     ).join("\n---\n\n");
   }
   function filename(title, extension) {
