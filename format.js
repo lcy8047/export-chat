@@ -130,5 +130,15 @@
       .slice(0, 80).replace(/[.\s]+$/g, "") || "conversation";
     return `chat-export-${safe}.${extension}`;
   }
-  app.format = Object.freeze({ fromElement, toMarkdown, markdown, filename, isRoleLabel });
+  function exportFilename(stem, title, extension) {
+    const fallback = filename(title, extension);
+    const defaultStem = filename(title, "md").slice(0, -3);
+    const value = String(stem ?? "").trim();
+    if (!value || value === defaultStem) return fallback;
+    const safe = value.replace(/\.(?:md|json)$/i, "").normalize("NFC")
+      .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "-")
+      .slice(0, 100).replace(/[.\s]+$/g, "");
+    return safe ? `${safe}.${extension}` : fallback;
+  }
+  app.format = Object.freeze({ fromElement, toMarkdown, markdown, filename, exportFilename, isRoleLabel });
 })();

@@ -401,3 +401,89 @@ test('actual message text and Markdown headings matching role labels are preserv
     assert.ok(data.messages[1].markdown.includes('<h4 data-conversation-role="user">You said:</h4>'));
   } finally { dom.window.close(); }
 });
+
+test('editable filenames retain the original default and sanitize custom names', () => {
+  const { dom, app } = environment();
+  try {
+    const title = 'Original conversation';
+    const defaultStem = app.format.filename(title, 'md').slice(0, -3);
+    for (const extension of ['md', 'json']) {
+      assert.equal(app.format.exportFilename(defaultStem, title, extension), app.format.filename(title, extension));
+      assert.equal(app.format.exportFilename('  ', title, extension), app.format.filename(title, extension));
+      assert.equal(app.format.exportFilename('...', title, extension), app.format.filename(title, extension));
+      assert.equal(app.format.exportFilename('My notes', title, extension), `My notes.${extension}`);
+      assert.equal(app.format.exportFilename('My notes.md', title, extension), `My notes.${extension}`);
+      assert.equal(app.format.exportFilename('My notes.json', title, extension), `My notes.${extension}`);
+      assert.equal(app.format.exportFilename('draft/title:*?', title, extension), `draft-title---.${extension}`);
+    }
+    const extensionTitle = 'Conversation.md';
+    const extensionStem = app.format.filename(extensionTitle, 'md').slice(0, -3);
+    assert.equal(app.format.exportFilename(extensionStem, extensionTitle, 'md'), app.format.filename(extensionTitle, 'md'));
+  } finally { dom.window.close(); }
+});
+
+function downloadPanelEnvironment() {
+  const env = environment(message('question', 'Question'));
+  const { window } = env;
+  let shadow;
+  const original = window.Element.prototype.attachShadow;
+  window.Element.prototype.attachShadow = function (options) {
+    shadow = original.call(this, options);
+    return shadow;
+  };
+  const blobs = new Map();
+  const downloads = [];
+  window.Blob = Blob;
+  window.URL.createObjectURL = blob => {
+    const url = `blob:test-${blobs.size}`;
+    blobs.set(url, blob);
+    return url;
+  };
+  window.URL.revokeObjectURL = url => blobs.delete(url);
+  window.HTMLAnchorElement.prototype.click = function () {
+    downloads.push({ filename: this.download, blob: blobs.get(this.href) });
+  };
+  window.eval(fs.readFileSync(path.join(root, 'panel.js'), 'utf8'));
+  const click = label => [...shadow.querySelectorAll('button')].find(node => node.textContent === label).click();
+  const collect = async () => {
+    shadow.querySelector('select').value = 'loaded';
+    click('Start collection');
+    await new Promise(resolve => setTimeout(resolve, 0));
+  };
+  return { ...env, shadow, downloads, click, collect };
+}
+
+test('the filename field is prefilled and unchanged downloads use the previous default', async () => {
+  const { dom, app, shadow, downloads, click, collect } = downloadPanelEnvironment();
+  try {
+    await collect();
+    assert.equal(shadow.querySelector('#chat-export-filename').value, 'chat-export-Test conversation');
+    click('Save Markdown');
+    click('Save JSON');
+    assert.deepEqual(downloads.map(item => item.filename), [
+      app.format.filename('Test conversation', 'md'), app.format.filename('Test conversation', 'json')
+    ]);
+    assert.ok((await downloads[0].blob.text()).includes('Question'));
+    assert.equal(JSON.parse(await downloads[1].blob.text()).messages[0].text, 'Question');
+  } finally { dom.window.close(); }
+});
+
+test('editing the filename affects both download formats without changing the conversation title', async () => {
+  const { dom, window, shadow, downloads, click, collect } = downloadPanelEnvironment();
+  try {
+    await collect();
+    const input = shadow.querySelector('#chat-export-filename');
+    input.value = 'My research';
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    click('Save Markdown');
+    click('Save JSON');
+    assert.deepEqual(downloads.map(item => item.filename), ['My research.md', 'My research.json']);
+    assert.equal(JSON.parse(await downloads[1].blob.text()).title, 'Test conversation');
+    await collect();
+    assert.equal(input.value, 'My research');
+    input.value = '';
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    click('Save Markdown');
+    assert.equal(downloads[2].filename, 'chat-export-Test conversation.md');
+  } finally { dom.window.close(); }
+});

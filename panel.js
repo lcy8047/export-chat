@@ -18,7 +18,7 @@
     .eyebrow { color: #28755d; font-size: 10px; letter-spacing: .16em; font-weight: 800; }
     .muted, small { color: #647369; }
     label { display: block; font-weight: 650; margin: 18px 0 6px; }
-    select { width: 100%; padding: 10px; background: white; color: inherit;
+    select, input { width: 100%; padding: 10px; background: white; color: inherit;
       border: 1px solid #bdcec1; border-radius: 8px; font: inherit; }
     .row { display: flex; gap: 8px; margin: 12px 0; }
     button { flex: 1; padding: 10px; border: 1px solid #bdcec1; border-radius: 8px;
@@ -26,7 +26,7 @@
     button.primary { background: #21684f; color: white; border-color: #21684f; }
     button.close { flex: 0; float: right; padding: 2px 8px; font-size: 16px; }
     button:disabled { opacity: .45; cursor: default; }
-    button:focus-visible, select:focus-visible { outline: 3px solid #6aad91; outline-offset: 2px; }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #6aad91; outline-offset: 2px; }
     .status { padding: 12px; background: #eaf1e8; border: 1px solid #d5e0d2;
       border-radius: 10px; margin: 14px 0; }
     .status p { margin: 4px 0 0; font-size: 12px; }
@@ -58,7 +58,7 @@
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "Chat Export");
   button(panel, "×", () => { host.hidden = true; }, "close").setAttribute("aria-label", "Close · Collection continues");
-  el("span", "CHAT EXPORT · 0.1.1", panel, "eyebrow");
+  el("span", "CHAT EXPORT · 0.2.0", panel, "eyebrow");
   el("h1", "Keep a copy of your conversation.", panel);
   el("p", "Save the selected conversation branch as Markdown or JSON.", panel, "muted");
   const label = el("label", "Collection scope", panel);
@@ -89,6 +89,23 @@
   result.hidden = true;
   el("h2", "Preview · First 4 messages", result);
   const preview = el("div", "", result, "preview");
+  const filenameLabel = el("label", "File name", result);
+  filenameLabel.htmlFor = "chat-export-filename";
+  const filenameInput = el("input", "", result);
+  filenameInput.id = "chat-export-filename";
+  filenameInput.type = "text";
+  filenameInput.autocomplete = "off";
+  filenameInput.spellcheck = false;
+  filenameInput.maxLength = 120;
+  filenameInput.defaultValue = app.format.filename(document.title || "ChatGPT conversation", "md").slice(0, -3);
+  filenameInput.value = filenameInput.defaultValue;
+  let filenameEdited = false;
+  filenameInput.addEventListener("input", () => {
+    filenameEdited = filenameInput.value !== filenameInput.defaultValue;
+  });
+  const filenameHelp = el("small", "The .md or .json extension is added automatically. Leave the name unchanged to use the default.", result);
+  filenameHelp.id = "chat-export-filename-help";
+  filenameInput.setAttribute("aria-describedby", filenameHelp.id);
   const downloads = el("div", "", result, "row");
   const md = button(downloads, "Save Markdown", () => download("md"));
   const json = button(downloads, "Save JSON", () => download("json"));
@@ -107,7 +124,7 @@
   const collector = new app.Collector({ onUpdate: render });
   function render(progress) {
     const running = collector.running;
-    start.disabled = mode.disabled = running;
+    start.disabled = mode.disabled = filenameInput.disabled = running;
     stop.disabled = !running;
     md.disabled = json.disabled = running || !collector.data?.messages.length;
     if (!progress) return;
@@ -118,6 +135,9 @@
       return;
     }
     const data = collector.data;
+    const defaultStem = app.format.filename(data.title, "md").slice(0, -3);
+    if (!filenameEdited) filenameInput.value = defaultStem;
+    filenameInput.defaultValue = defaultStem;
     const failed = data.collection.stopReason === "error";
     const label = failed ? "Collection failed" : data.collection.stopReason === "user-stopped" ? "Collection stopped" : "Collection finished";
     status.textContent = `${label} · ${data.messages.length} messages`;
@@ -150,7 +170,7 @@
     const data = collector.data;
     if (collector.running || !data?.messages.length) return;
     const content = extension === "json" ? JSON.stringify(data, null, 2) : app.format.markdown(data);
-    saveFile(content, app.format.filename(data.title, extension), extension === "json"
+    saveFile(content, app.format.exportFilename(filenameInput.value, data.title, extension), extension === "json"
       ? "application/json;charset=utf-8" : "text/markdown;charset=utf-8");
   }
   function saveFile(content, filename, type) {

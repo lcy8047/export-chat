@@ -18,14 +18,17 @@ The extension runs without Node.js or `npm install`.
 1. Pull the latest changes or replace the unpacked files.
 2. Open `chrome://extensions` and click **Reload** on **Chat Export**.
 3. **Reload the ChatGPT conversation tab as well** to remove the previous injected collector.
-4. Reopen the extension. The panel header should show **0.1.1**.
+4. Reopen the extension. The panel header should show **0.2.0**.
 
 ## Usage
 
 - **Long conversation**: Collects messages while scrolling up from the current position, then scans down to the bottom. A boundary is considered observed after the scroll height, message count, and content length remain stable for three checks.
 - **Messages already loaded on this page**: Collects only messages already present in the DOM. This may include messages outside the visible viewport.
 - **Stop**: Ends collection and retains the messages captured so far.
-- After collection, review the preview of the first four messages and click **Save Markdown** or **Save JSON**.
+- After collection, review the preview of the first four messages.
+- The **File name** field is prefilled with the original automatic name: `chat-export-` followed by the sanitized conversation title. Leave it unchanged to keep that default, or enter your own name.
+- Click **Save Markdown** or **Save JSON**. The selected format's `.md` or `.json` extension is added automatically. A custom name ending with either extension is adjusted to the selected format without duplicating the extension.
+- An empty or unusable custom name falls back to the original default. Filename characters that cannot be used in paths are replaced. Changing the filename does not change the conversation title inside the exported content.
 - Closing the panel does not stop collection. Click the extension icon to reopen it.
 - Keep the tab open and avoid navigating, scrolling, editing messages, or regenerating responses during collection.
 - Collection is limited to 90 seconds and 240 scroll steps per direction. Partial results remain available when a limit is reached.
@@ -82,4 +85,4 @@ npm run check
 npm test
 ```
 
-`jsdom` is used only for development tests. Tests cover legacy and grouped search-unit layouts, message discovery outside the first main element, initial rendering delays, DOM replacement during virtual scrolling, repeated-message preservation, code fences, tables, formulas, interruptions, limits, panel reopening, and safe text rendering. They do not exercise Chrome extension APIs or a signed-in ChatGPT session.
+`jsdom` is used only for development tests. Tests cover legacy and grouped search-unit layouts, message discovery outside the first main element, initial rendering delays, DOM replacement during virtual scrolling, repeated-message preservation, code fences, tables, formulas, interruptions, limits, panel reopening, role-label exclusion with matching message-text preservation, editable download filenames with unchanged defaults, and safe text rendering. They do not exercise Chrome extension APIs or a signed-in ChatGPT session.
