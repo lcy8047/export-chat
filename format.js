@@ -1,7 +1,7 @@
 (() => {
   const app = globalThis.__chatExportV1 ||= {};
   if (app.format) return;
-  const OMIT = "button,script,style,svg,nav,input,textarea,[hidden],[aria-hidden='true']";
+  const OMIT = "button,script,style,svg,nav,input,textarea,[hidden],[aria-hidden='true'],.turn-action-controls";
   const escape = text => String(text).replace(/\\/g, "\\\\").replace(/([`*_[\]<>])/g, "\\$1");
   const ticks = text => Math.max(0, ...(text.match(/`+/g) || []).map(s => s.length));
   const block = text => `\n\n${text.trim()}\n\n`;
@@ -83,10 +83,10 @@
   function fromElement(element, role, base) {
     const clone = element.cloneNode(true);
     clone.querySelectorAll(OMIT).forEach(node => node.remove());
-    const candidates = role === "assistant" ? Array.from(clone.querySelectorAll(".markdown")) : [];
+    const candidates = role === "assistant" ? Array.from(clone.querySelectorAll(".markdown,.MarkdownRoot")) : [];
     const roots = candidates.filter(node => !candidates.some(other => other !== node && other.contains(node)));
     // Restrict known message bodies to avoid exporting action labels and UI chrome.
-    const userBody = role === "user" ? clone.querySelector(".whitespace-pre-wrap") : null;
+    const userBody = role === "user" ? clone.querySelector('[data-user-message-bubble="true"],.whitespace-pre-wrap,[data-testid="collapsible-user-message-content"]') : null;
     const bodies = roots.length ? roots : [userBody || clone];
     return {
       text: bodies.map(node => node.textContent.trim()).join("\n\n"),

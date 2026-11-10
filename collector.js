@@ -1,22 +1,96 @@
 (() => {
   const app = globalThis.__chatExportV1 ||= {};
   if (app.Collector) return;
-  const ROLE_SELECTOR = "[data-message-author-role]";
+  const UNIT_ATTRIBUTES = ["data-content-search-unit-key", "data-chatgpt-search-unit-key"];
+  const UNIT_SELECTOR = UNIT_ATTRIBUTES.map(name => `[${name}]`).join(",");
+  const TURN_SELECTOR = '[data-turn-id],[data-testid^="conversation-turn-"],[data-turn-key],[data-content-search-turn-key]';
+  const MESSAGE_SELECTOR = [
+    "[data-message-author-role]", "[data-conversation-role]", UNIT_SELECTOR,
+    '[data-user-message-bubble="true"]', '[data-turn="user"]', '[data-turn="assistant"]'
+  ].join(",");
+  const EXCLUDED = 'nav,aside,form,[role="navigation"],[role="dialog"],[contenteditable="true"],[hidden],[aria-hidden="true"]';
+  const ROLES = new Set(["user", "assistant", "system", "developer", "tool"]);
+
+  function roleOf(node) {
+    for (const name of ["data-message-author-role", "data-conversation-role", "data-turn"]) {
+      const role = node.getAttribute(name);
+      if (ROLES.has(role)) return role;
+    }
+    for (const name of UNIT_ATTRIBUTES) {
+      const role = node.getAttribute(name)?.split(":").at(-1);
+      if (role === "user" || role === "assistant") return role;
+    }
+    return node.getAttribute("data-user-message-bubble") === "true" ? "user" : "";
+  }
+
+  function eligible(node) {
+    if (node.closest(EXCLUDED)) return false;
+    for (let parent = node; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return false;
+    }
+    return true;
+  }
   const STREAM_SELECTOR = '[data-testid="stop-button"],button[aria-label="Stop generating"],button[aria-label="\uc751\ub2f5 \uc0dd\uc131 \uc911\uc9c0"]';
 
   class Collector {
-    constructor({ onUpdate = () => {}, settleMs = 650, maxDurationMs = 90000, maxSteps = 240 } = {}) {
+    constructor({ onUpdate = () => {}, settleMs = 650, initialWaitMs = 4000, maxDurationMs = 90000, maxSteps = 240 } = {}) {
       this.onUpdate = onUpdate;
       this.settleMs = settleMs;
+      this.initialWaitMs = initialWaitMs;
       this.maxDurationMs = maxDurationMs;
       this.maxSteps = maxSteps;
       this.running = false;
       this.data = null;
     }
     nodes() {
-      const root = document.querySelector("main") || document.body;
-      return Array.from(root.querySelectorAll(ROLE_SELECTOR))
-        .filter(node => !node.closest('[hidden],[aria-hidden="true"]'));
+      // New ChatGPT exchanges group both roles under one data-turn-key.
+      // Search units identify individual messages; the exchange is not a message.
+      const candidates = Array.from(document.querySelectorAll(MESSAGE_SELECTOR))
+        .filter(node => roleOf(node) && eligible(node));
+      const units = candidates.filter(node => node.matches(UNIT_SELECTOR));
+      const messages = candidates.filter(node => node.matches(UNIT_SELECTOR) ||
+        !units.some(unit => node.contains(unit) || unit.contains(node)));
+      const singleRole = messages.filter(node => !messages.some(child =>
+        child !== node && node.contains(child) && roleOf(child) !== roleOf(node)));
+      return singleRole.filter(node => !singleRole.some(parent =>
+        parent !== node && parent.contains(node) && roleOf(parent) === roleOf(node)));
+    }
+    identity(node, role, peers) {
+      const unit = node.closest(UNIT_SELECTOR) || Array.from(node.querySelectorAll(UNIT_SELECTOR))
+        .find(child => roleOf(child) === role);
+      if (unit) {
+        for (const name of UNIT_ATTRIBUTES) {
+          const key = unit.getAttribute(name);
+          if (key && roleOf(unit) === role) return `${role}:unit:${key}`;
+        }
+      }
+      const messageId = node.getAttribute("data-message-id") || node.querySelector("[data-message-id]")?.getAttribute("data-message-id");
+      if (messageId) return `${role}:${messageId}`;
+      const turn = node.closest(TURN_SELECTOR);
+      if (turn) {
+        const key = ["data-turn-id", "data-testid", "data-turn-key", "data-content-search-turn-key"]
+          .map(name => turn.getAttribute(name)).find(Boolean);
+        const siblings = peers.filter(peer => roleOf(peer) === role && peer.closest(TURN_SELECTOR) === turn);
+        return `${role}:turn:${key}:${siblings.indexOf(node)}`;
+      }
+      this.weakIdentity = true;
+      if (!this.fallbackIds.has(node)) this.fallbackIds.set(node, `local-${++this.fallbackCounter}`);
+      return this.fallbackIds.get(node);
+    }
+    diagnostics() {
+      // Counts only: never include message text, HTML, URLs, titles, or identifiers.
+      const count = selector => document.querySelectorAll(selector).length;
+      return {
+        documentState: document.readyState,
+        legacyRoles: count("[data-message-author-role]"),
+        conversationRoles: count("[data-conversation-role]"),
+        searchUnits: count(UNIT_SELECTOR),
+        turns: count('[data-turn="user"],[data-turn="assistant"]'),
+        exchanges: count("[data-turn-key],[data-content-search-turn-key]"),
+        userBubbles: count('[data-user-message-bubble="true"]'),
+        selectedMessages: this.nodes().length
+      };
     }
     findScroller(node) {
       for (let parent = node?.parentElement; parent; parent = parent.parentElement) {
@@ -38,22 +112,11 @@
     capture(direction) {
       if (location.href !== this.url) return [];
       this.sawStreaming ||= Boolean(document.querySelector(STREAM_SELECTOR));
-      const batch = this.nodes().map(node => {
-        const role = node.getAttribute("data-message-author-role") || "unknown";
-        let id = node.getAttribute("data-message-id");
-        if (id) id = `${role}:${id}`;
-        const turn = node.closest('[data-testid^="conversation-turn-"]');
-        if (!id && turn) {
-          const peers = Array.from(turn.querySelectorAll(ROLE_SELECTOR));
-          id = `${turn.getAttribute("data-testid")}:${role}:${peers.indexOf(node)}`;
-        }
-        if (!id) {
-          this.weakIdentity = true;
-          if (!this.fallbackIds.has(node)) this.fallbackIds.set(node, `local-${++this.fallbackCounter}`);
-          id = this.fallbackIds.get(node);
-        }
-        return { id, role, ...app.format.fromElement(node, role, this.url) };
-      });
+      const nodes = this.nodes();
+      const batch = nodes.map(node => {
+        const role = roleOf(node);
+        return { id: this.identity(node, role, nodes), role, ...app.format.fromElement(node, role, this.url) };
+      }).filter(message => message.text || message.markdown || message.images.length || message.attachments.length);
       // Merge overlapping viewport snapshots by message identity, not by text.
       // Identical questions in distinct turns must remain distinct messages.
       for (let i = 0; i < batch.length; i++) {
@@ -117,17 +180,29 @@
       this.url = location.href;
       this.title = document.title || "ChatGPT conversation";
       this.deadline = Date.now() + this.maxDurationMs;
-      const scroller = this.findScroller(this.nodes()[0]);
-      const originalTop = scroller.scrollTop;
-      const oldBehavior = scroller.style.getPropertyValue("scroll-behavior");
-      const oldPriority = scroller.style.getPropertyPriority("scroll-behavior");
+      let scroller = null;
+      let originalTop = 0;
+      let oldBehavior = "";
+      let oldPriority = "";
       let reason = "loaded-only";
       let failure = "";
       try {
-        if (!this.capture("down").length) {
-          throw new Error("No messages found. Open a conversation and try again. The page structure may have changed.");
+        const readyDeadline = Date.now() + this.initialWaitMs;
+        let initial = this.capture("down");
+        while (!initial.length && !this.interruption() && Date.now() < readyDeadline) {
+          this.notify("waiting");
+          await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(0, readyDeadline - Date.now()))));
+          if (!this.interruption()) initial = this.capture("down");
         }
-        if (mode === "scroll") {
+        if (!initial.length && !this.interruption()) {
+          throw new Error("No messages found after waiting for the page. Reload ChatGPT and try again. If this persists, save diagnostics from this panel.");
+        }
+        if (this.interruption()) reason = this.interruption();
+        else if (mode === "scroll") {
+          scroller = this.findScroller(this.nodes()[0]);
+          originalTop = scroller.scrollTop;
+          oldBehavior = scroller.style.getPropertyValue("scroll-behavior");
+          oldPriority = scroller.style.getPropertyPriority("scroll-behavior");
           scroller.style.setProperty("scroll-behavior", "auto", "important");
           const up = await this.sweep(scroller, "up");
           reason = up === "boundary-observed" ? await this.sweep(scroller, "down") : up;
@@ -148,11 +223,11 @@
         this.data = {
           schemaVersion: 1, title: this.title, url: this.url,
           exportedAt: new Date().toISOString(), scope: "current-branch", completeness: "unverified",
-          collection: { mode, stopReason: reason, warnings },
+          collection: { mode, stopReason: reason, warnings, ...(reason === "error" ? { diagnostics: this.diagnostics() } : {}) },
           messages: this.order.map(id => this.items.get(id))
         };
         this.running = false;
-        if (mode === "scroll") {
+        if (scroller) {
           if (location.href === this.url) scroller.scrollTop = originalTop;
           if (oldBehavior) scroller.style.setProperty("scroll-behavior", oldBehavior, oldPriority);
           else scroller.style.removeProperty("scroll-behavior");

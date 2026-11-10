@@ -13,6 +13,13 @@ A Chrome Manifest V3 extension that saves the selected branch of the current Cha
 
 The extension runs without Node.js or `npm install`.
 
+## Updating an unpacked installation
+
+1. Pull the latest changes or replace the unpacked files.
+2. Open `chrome://extensions` and click **Reload** on **Chat Export**.
+3. **Reload the ChatGPT conversation tab as well** to remove the previous injected collector.
+4. Reopen the extension. The panel header should show **0.1.1**.
+
 ## Usage
 
 - **Long conversation**: Collects messages while scrolling up from the current position, then scans down to the bottom. A boundary is considered observed after the scroll height, message count, and content length remain stable for three checks.
@@ -26,6 +33,14 @@ The extension runs without Node.js or `npm install`.
 - If the conversation URL changes, collection stops before capturing content from the new conversation.
 - Results are stored only in memory. Reloading or closing the tab clears them. If the panel remains after navigation, existing results are still exported with their original conversation URL and title.
 
+## Troubleshooting message detection
+
+The collector supports both legacy role attributes and newer ChatGPT search-unit, conversation-role, and user-bubble markers. It also handles turn-level roles without assuming that a turn is an `article`, and does not restrict detection to the first `main` element. Nested markers for the same message are deduplicated; grouped exchanges keep user and assistant messages separate.
+
+If no messages are available immediately, collection waits up to four seconds for rendering. A failed collection is labeled **Collection failed**, with **Save diagnostics** available for troubleshooting. The diagnostic file contains only document readiness and marker counts, without message text, HTML, titles, URLs, or message identifiers. No diagnostics are sent automatically.
+
+If an ordinary visible conversation still produces zero messages, first reload both the extension and the ChatGPT tab. If the problem persists, save the diagnostic file to help identify an unsupported layout.
+
 ## Export scope and limitations
 
 **Finishing collection does not establish transcript completeness.** The extension cannot compare the DOM against the complete conversation stored on the server, so every export records `completeness: "unverified"`. Observing both scroll boundaries does not guarantee a complete transcript.
@@ -34,7 +49,7 @@ The extension runs without Node.js or `npm install`.
 - Server data that has not been rendered and hidden internal reasoning are not collected.
 - Image descriptions and attachment names available through download links may be recorded. Original attachments are neither downloaded nor embedded.
 - Markdown conversion handles headings, emphasis, links, code, lists, blockquotes, basic tables, and KaTeX formulas. Complex merged cells and specialized interfaces are not preserved exactly.
-- Message IDs are preferred. Conversation-turn attributes or DOM node identities are used as fallbacks. DOM node identities may produce duplicates when nodes are recreated; the export includes a warning when this fallback is used.
+- Search-unit keys and message IDs are preferred. Conversation-turn or exchange attributes and DOM node identities are used as fallbacks. DOM node identities may produce duplicates when nodes are recreated; the export includes a warning when this fallback is used.
 - Responses generated during collection may be incomplete. Collect again after generation finishes.
 - Lazy loading, background-tab timer throttling, and ChatGPT interface changes may cause omissions.
 
@@ -67,4 +82,4 @@ npm run check
 npm test
 ```
 
-`jsdom` is used only for development tests. Tests cover DOM replacement during virtual scrolling, repeated-message preservation, code fences, tables, formulas, interruptions, limits, panel reopening, and safe text rendering. They do not exercise Chrome extension APIs or a signed-in ChatGPT session.
+`jsdom` is used only for development tests. Tests cover legacy and grouped search-unit layouts, message discovery outside the first main element, initial rendering delays, DOM replacement during virtual scrolling, repeated-message preservation, code fences, tables, formulas, interruptions, limits, panel reopening, and safe text rendering. They do not exercise Chrome extension APIs or a signed-in ChatGPT session.

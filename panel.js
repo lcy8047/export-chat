@@ -58,7 +58,7 @@
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "Chat Export");
   button(panel, "×", () => { host.hidden = true; }, "close").setAttribute("aria-label", "Close · Collection continues");
-  el("span", "CHAT EXPORT", panel, "eyebrow");
+  el("span", "CHAT EXPORT · 0.1.1", panel, "eyebrow");
   el("h1", "Keep a copy of your conversation.", panel);
   el("p", "Save the selected conversation branch as Markdown or JSON.", panel, "muted");
   const label = el("label", "Collection scope", panel);
@@ -78,6 +78,13 @@
   const status = el("strong", "Ready to collect.", statusBox);
   const detail = el("p", "", statusBox);
   const warnings = el("ul", "", statusBox);
+  const diagnosticButton = button(panel, "Save diagnostics", () => {
+    const diagnostics = collector.data?.collection.diagnostics;
+    if (diagnostics && !collector.running) {
+      saveFile(JSON.stringify(diagnostics, null, 2), "chat-export-diagnostics.json", "application/json;charset=utf-8");
+    }
+  });
+  diagnosticButton.hidden = true;
   const result = el("div", "", panel);
   result.hidden = true;
   el("h2", "Preview · First 4 messages", result);
@@ -106,11 +113,15 @@
     if (!progress) return;
     if (progress.phase !== "done") {
       status.textContent = `Collecting · ${progress.count} messages`;
-      detail.textContent = progress.phase === "up" ? "Checking earlier messages." : "Checking messages.";
+      detail.textContent = progress.phase === "waiting" ? "Waiting for messages to render."
+        : progress.phase === "up" ? "Checking earlier messages." : "Checking messages.";
       return;
     }
     const data = collector.data;
-    status.textContent = `${data.collection.stopReason === "user-stopped" ? "Collection stopped" : "Collection finished"} · ${data.messages.length} messages`;
+    const failed = data.collection.stopReason === "error";
+    const label = failed ? "Collection failed" : data.collection.stopReason === "user-stopped" ? "Collection stopped" : "Collection finished";
+    status.textContent = `${label} · ${data.messages.length} messages`;
+    diagnosticButton.hidden = !data.collection.diagnostics;
     detail.textContent = `Completeness unverified · ${reasons[data.collection.stopReason] || data.collection.stopReason}`;
     warnings.replaceChildren();
     data.collection.warnings.forEach(text => el("li", text, warnings));
@@ -126,6 +137,7 @@
   async function begin() {
     if (collector.running) return;
     result.hidden = true;
+    diagnosticButton.hidden = true;
     warnings.replaceChildren();
     try { await collector.collect({ mode: mode.value }); }
     catch (error) {
@@ -138,12 +150,15 @@
     const data = collector.data;
     if (collector.running || !data?.messages.length) return;
     const content = extension === "json" ? JSON.stringify(data, null, 2) : app.format.markdown(data);
-    const blob = new Blob([content], { type: extension === "json"
-      ? "application/json;charset=utf-8" : "text/markdown;charset=utf-8" });
+    saveFile(content, app.format.filename(data.title, extension), extension === "json"
+      ? "application/json;charset=utf-8" : "text/markdown;charset=utf-8");
+  }
+  function saveFile(content, filename, type) {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const link = el("a", "", shadow);
     link.href = url;
-    link.download = app.format.filename(data.title, extension);
+    link.download = filename;
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);

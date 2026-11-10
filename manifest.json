@@ -1,10 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Chat Export — Markdown & JSON",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Save the current ChatGPT conversation locally as Markdown or JSON.",
   "minimum_chrome_version": "102",
-  "permissions": ["activeTab", "scripting"],
-  "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Chat Export · Save current conversation" }
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Chat Export · Save current conversation"
+  }
 }
