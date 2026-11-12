@@ -1,12 +1,13 @@
 {
   "name": "chat-export",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Local ChatGPT conversation exporter",
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "check": "node --check background.js && node --check format.js && node --check collector.js && node --check panel.js && node --check tests/browser-focus.cjs",
-    "test:browser": "node tests/browser-focus.cjs"
+    "check": "node --check background.js && node --check format.js && node --check collector.js && node --check panel.js && node --check tests/browser-focus.cjs && node --check tests/benchmark-collector.cjs",
+    "test:browser": "node tests/browser-focus.cjs",
+    "benchmark": "node tests/benchmark-collector.cjs"
   },
   "devDependencies": {
     "jsdom": "^31.0.0",

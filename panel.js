@@ -59,7 +59,7 @@
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "Chat Export");
   button(panel, "×", () => { host.hidden = true; host.style.display = "none"; }, "close").setAttribute("aria-label", "Close · Collection continues");
-  el("span", "CHAT EXPORT · 0.2.1", panel, "eyebrow");
+  el("span", "CHAT EXPORT · 0.2.2", panel, "eyebrow");
   el("h1", "Keep a copy of your conversation.", panel);
   el("p", "Save the selected conversation branch as Markdown or JSON.", panel, "muted");
   const label = el("label", "Collection scope", panel);

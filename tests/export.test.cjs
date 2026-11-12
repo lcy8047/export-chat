@@ -527,3 +527,209 @@ test('filename editing keeps clipboard, input, and composition events local with
     assert.deepEqual(escapedEvents, []);
   } finally { dom.window.close(); }
 });
+
+function persistentScrollEnvironment(count = 40) {
+  const env = environment('<div id="scroller" style="overflow-y:auto"></div>');
+  const scroller = env.window.document.getElementById('scroller');
+  scroller.innerHTML = Array.from({ length: count }, (_, i) => message(String(i), `Content ${i}`)).join('');
+  let top = Math.min(1200, count * 100 - 500);
+  const positions = [];
+  const layout = { extraHeight: 0, onScroll: null };
+  Object.defineProperties(scroller, {
+    clientHeight: { get: () => 500 }, scrollHeight: { get: () => count * 100 + layout.extraHeight },
+    scrollTop: { get: () => top, set: value => { top = Math.max(0, Math.min(count * 100 + layout.extraHeight - 500, value)); positions.push(top); layout.onScroll?.(top); } }
+  });
+  scroller.getBoundingClientRect = () => ({ top: 0, bottom: 500, width: 700, height: 500 });
+  for (const node of scroller.children) {
+    const index = Number(node.getAttribute('data-message-id'));
+    node.getBoundingClientRect = () => ({ top: index * 100 - top, bottom: (index + 1) * 100 - top, width: 700, height: 100 });
+  }
+  return { ...env, scroller, positions, layout };
+}
+
+test('unchanged message bodies are converted once despite repeated viewport captures', async () => {
+  const { dom, app, scroller } = persistentScrollEnvironment();
+  try {
+    const data = await new app.Collector({ settleMs: 0 }).collect({ mode: 'scroll' });
+    assert.equal(data.messages.length, 40);
+    assert.equal(data.collection.metrics.conversions, 40);
+    assert.ok(data.collection.metrics.cacheHits > 40);
+    assert.equal(data.collection.metrics.resumeJumps, 1);
+    assert.equal(scroller.scrollTop, 1200);
+    assert.deepEqual(plain(data.messages.map(m => m.text)), Array.from({ length: 40 }, (_, i) => `Content ${i}`));
+  } finally { dom.window.close(); }
+});
+
+test('same-length text edits and link changes invalidate cached bodies', async () => {
+  const { dom, app, scroller } = persistentScrollEnvironment(12);
+  try {
+    const node = scroller.children[3];
+    node.innerHTML = '<p>before</p><a href="https://example.com/old">Link</a>';
+    let edited = false;
+    const collector = new app.Collector({ settleMs: 0, onUpdate: progress => {
+      if (progress.phase !== 'up' || edited) return;
+      edited = true;
+      node.querySelector('p').firstChild.data = 'after!';
+      node.querySelector('a').setAttribute('href', 'https://example.com/new');
+    } });
+    const data = await collector.collect({ mode: 'scroll' });
+    const changed = data.messages.find(m => m.id === 'user:3');
+    assert.ok(changed.markdown.includes('after!'));
+    assert.ok(changed.markdown.includes('https://example.com/new'));
+    assert.ok(!changed.markdown.includes('https://example.com/old'));
+    assert.equal(data.collection.metrics.conversions, 13);
+    assert.equal(collector.observer, null);
+  } finally { dom.window.close(); }
+});
+
+test('a recreated message node with the same ID is re-read rather than blindly using its old body', async () => {
+  const { dom, app, scroller } = persistentScrollEnvironment(12);
+  try {
+    let replaced = false;
+    const data = await new app.Collector({ settleMs: 0, onUpdate: progress => {
+      if (progress.phase !== 'up' || replaced) return;
+      replaced = true;
+      scroller.children[3].outerHTML = message('3', 'Updated body');
+    } }).collect({ mode: 'scroll' });
+    assert.equal(data.messages.find(m => m.id === 'user:3').text, 'Updated body');
+    assert.equal(data.messages.length, 12);
+    assert.equal(data.collection.metrics.conversions, 13);
+  } finally { dom.window.close(); }
+});
+
+function delayedScrollEnvironment({ delay = 65, placeholders = true, mismatch = false } = {}) {
+  const env = environment('<div id="scroller" style="overflow-y:auto"></div>');
+  const scroller = env.window.document.getElementById('scroller');
+  let top = 1200;
+  let timer;
+  let wasAtTop = false;
+  let mismatched = false;
+  const render = hydrated => {
+    let first = Math.floor(top / 500);
+    let last = Math.min(5, Math.floor((top + 499) / 500));
+    if (mismatch && wasAtTop && top === 1200 && !mismatched) {
+      mismatched = true;
+      first = last = 5;
+    }
+    scroller.innerHTML = !hydrated && !placeholders ? '' : Array.from({ length: last - first + 1 }, (_, i) =>
+      message(String(first + i), hydrated ? `Content ${first + i}` : '')).join('');
+    for (const node of scroller.children) {
+      const index = Number(node.getAttribute('data-message-id'));
+      node.getBoundingClientRect = () => ({ top: index * 500 - top, bottom: (index + 1) * 500 - top, width: 700, height: 500 });
+    }
+  };
+  Object.defineProperties(scroller, {
+    clientHeight: { get: () => 500 }, scrollHeight: { get: () => 3000 },
+    scrollTop: { get: () => top, set: value => {
+      const next = Math.max(0, Math.min(2500, value));
+      if (next === top) return;
+      env.window.clearTimeout(timer);
+      if (top === 0) wasAtTop = true;
+      top = next;
+      render(delay === 0);
+      if (delay) timer = env.window.setTimeout(() => render(true), delay);
+    } }
+  });
+  scroller.getBoundingClientRect = () => ({ top: 0, bottom: 500, width: 700, height: 500 });
+  render(true);
+  return { ...env, scroller };
+}
+
+for (const placeholders of [true, false]) {
+  test(`adaptive waits retain asynchronously hydrated messages (placeholders: ${placeholders})`, async () => {
+    const { dom, app, scroller } = delayedScrollEnvironment({ placeholders });
+    try {
+      const data = await new app.Collector({ settleMs: 25, minWaitMs: 5, quietMs: 5, hydrationTimeoutMs: 250 }).collect({ mode: 'scroll' });
+      assert.deepEqual(plain(data.messages.map(m => m.text)), Array.from({ length: 6 }, (_, i) => `Content ${i}`));
+      assert.equal(data.collection.stopReason, 'scroll-boundaries-observed');
+      assert.equal(data.collection.metrics.waitLimitHits, 0);
+      assert.equal(scroller.scrollTop, 1200);
+    } finally { dom.window.close(); }
+  });
+}
+
+test('an unverified resume snapshot falls back without inserting speculative messages out of order', async () => {
+  const { dom, app } = delayedScrollEnvironment({ delay: 0, mismatch: true });
+  try {
+    const data = await new app.Collector({ settleMs: 0 }).collect({ mode: 'scroll' });
+    assert.equal(data.collection.metrics.resumeJumps, 0);
+    assert.deepEqual(plain(data.messages.map(m => m.text)), Array.from({ length: 6 }, (_, i) => `Content ${i}`));
+  } finally { dom.window.close(); }
+});
+
+test('stopping during an adaptive rendering wait preserves data and disconnects the observer', async () => {
+  const { dom, window, app } = delayedScrollEnvironment();
+  try {
+    const collector = new app.Collector({ settleMs: 25, hydrationTimeoutMs: 250 });
+    window.setTimeout(() => collector.stop(), 15);
+    const data = await collector.collect({ mode: 'scroll' });
+    assert.equal(data.collection.stopReason, 'user-stopped');
+    assert.ok(data.messages.length);
+    assert.equal(collector.observer, null);
+    assert.equal(collector.running, false);
+  } finally { dom.window.close(); }
+});
+
+test('a changed document height disables the visited-region jump', async () => {
+  const { dom, app, layout } = persistentScrollEnvironment(20);
+  try {
+    let expanded = false;
+    const data = await new app.Collector({ settleMs: 0, onUpdate: progress => {
+      if (progress.phase === 'up' && !expanded) {
+        expanded = true;
+        layout.extraHeight = 200;
+      }
+    } }).collect({ mode: 'scroll' });
+    assert.equal(data.collection.metrics.resumeJumps, 0);
+    assert.equal(data.messages.length, 20);
+    assert.equal(data.collection.stopReason, 'scroll-boundaries-observed');
+  } finally { dom.window.close(); }
+});
+
+test('a rendering timeout reports possible missing bodies rather than claiming completeness', async () => {
+  const { dom, app, scroller } = persistentScrollEnvironment(8);
+  try {
+    scroller.lastElementChild.replaceChildren();
+    const data = await new app.Collector({ settleMs: 10, minWaitMs: 2, quietMs: 2, hydrationTimeoutMs: 15 }).collect({ mode: 'scroll' });
+    assert.equal(data.messages.length, 7);
+    assert.ok(data.collection.metrics.waitLimitHits > 0);
+    assert.ok(data.collection.warnings.some(w => w.includes('rendering wait limit')));
+    assert.equal(data.completeness, 'unverified');
+  } finally { dom.window.close(); }
+});
+
+test('navigation during rendering wait retains only the original conversation and stops observing', async () => {
+  const { dom, window, app, scroller } = delayedScrollEnvironment();
+  try {
+    const collector = new app.Collector({ settleMs: 25, hydrationTimeoutMs: 250 });
+    window.setTimeout(() => {
+      dom.reconfigure({ url: 'https://chatgpt.com/c/another-conversation' });
+      scroller.innerHTML = message('another', 'Do not collect this');
+    }, 15);
+    const data = await collector.collect({ mode: 'scroll' });
+    assert.equal(data.collection.stopReason, 'conversation-changed');
+    assert.equal(data.url, 'https://chatgpt.com/c/example');
+    assert.ok(!data.messages.some(message => message.id === 'user:another'));
+    assert.equal(collector.observer, null);
+  } finally { dom.window.close(); }
+});
+
+test('height changes during the resume jump also force a conservative rescan', async () => {
+  const { dom, app, layout } = persistentScrollEnvironment(20);
+  try {
+    let sawTop = false;
+    let changed = false;
+    layout.onScroll = top => {
+      if (top === 0) sawTop = true;
+      if (sawTop && top === 1200 && !changed) {
+        changed = true;
+        layout.extraHeight = 200;
+      }
+    };
+    const data = await new app.Collector({ settleMs: 0 }).collect({ mode: 'scroll' });
+    assert.equal(changed, true);
+    assert.equal(data.collection.metrics.resumeJumps, 0);
+    assert.equal(data.messages.length, 20);
+    assert.equal(data.collection.stopReason, 'scroll-boundaries-observed');
+  } finally { dom.window.close(); }
+});

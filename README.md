@@ -18,11 +18,11 @@ The extension runs without Node.js or `npm install`.
 1. Pull the latest changes or replace the unpacked files.
 2. Open `chrome://extensions` and click **Reload** on **Chat Export**.
 3. **Reload the ChatGPT conversation tab as well** to remove the previous injected collector.
-4. Reopen the extension. The panel header should show **0.2.1**.
+4. Reopen the extension. The panel header should show **0.2.2**.
 
 ## Usage
 
-- **Long conversation**: Collects messages while scrolling up from the current position, then scans down to the bottom. A boundary is considered observed after the scroll height, message count, and content length remain stable for three checks.
+- **Long conversation**: Collects messages while scrolling up from the current position. If the document height is unchanged and the restored viewport overlaps the original visible message IDs, it returns to the starting position and scans only the remaining lower region. Otherwise, it scans down from the top. A boundary is considered observed after the scroll height, message count, and exported content remain stable for three checks.
 - **Messages already loaded on this page**: Collects only messages already present in the DOM. This may include messages outside the visible viewport.
 - **Stop**: Ends collection and retains the messages captured so far.
 - After collection, review the preview of the first four messages.
@@ -36,6 +36,15 @@ The extension runs without Node.js or `npm install`.
 - If you remain in the same conversation, the original scroll position is restored after collection.
 - If the conversation URL changes, collection stops before capturing content from the new conversation.
 - Results are stored only in memory. Reloading or closing the tab clears them. If the panel remains after navigation, existing results are still exported with their original conversation URL and title.
+
+## Long-conversation performance
+
+- Unchanged message nodes reuse extracted bodies. A `MutationObserver` invalidates cached bodies when text, attributes, or descendants change. Recreated nodes are read again even if their message ID is unchanged.
+- Normal scroll steps wait at least 80 ms and finish once the visible message bodies are ready and relevant DOM changes have been quiet for 80 ms. Empty visible message shells or missing viewport content keep the collector waiting, up to 1.8 seconds per step. Reaching that limit adds an explicit warning about potentially missing or incomplete bodies.
+- Boundary checks retain the 650 ms minimum and three stable observations. The overall time and scroll-step limits remain in place.
+- A visited region is skipped only after document-height and visible-message overlap checks. An unverified jump falls back to the full downward scan; speculative snapshots are not inserted into the transcript.
+- Message discovery shares ancestor-style checks, and ordered message insertion uses linked neighbours instead of repeatedly searching the entire transcript array.
+- JSON exports include `collection.metrics` with elapsed milliseconds, snapshots, conversions, cache hits, scroll steps, validated resume jumps, and rendering-wait limit hits. These are local measurements and do not establish completeness.
 
 ## Troubleshooting message detection
 
@@ -78,6 +87,7 @@ The extension has not yet been tested directly against the current signed-in Cha
 | `panel.js` | Shadow DOM panel, isolated iframe filename field, status, previews, and downloads |
 | `tests/export.test.cjs` | Automated tests using DOM fixtures |
 | `tests/browser-focus.cjs` | Chromium regression checks for filename focus, clipboard, IME, and downloads |
+| `tests/benchmark-collector.cjs` | Chromium performance fixtures with optional baseline comparison |
 
 ## Development checks
 
@@ -98,3 +108,27 @@ npm run test:browser
 ```
 
 Playwright is a development dependency only. This check uses a local fixture served through intercepted requests and a CDP isolated world to model a content script. A parent-page capture listener deliberately steals composer focus if filename keystrokes escape. The check exercises native typing, selection, deletion, clipboard paste, IME composition, and a browser download; it also verifies that typing in the page composer still works. It does not access a signed-in ChatGPT account.
+
+
+To measure collection on repeatable 40-message fixtures after installing Chromium:
+
+```sh
+npm run benchmark
+```
+
+To compare against an older collector, supply a saved copy of its source:
+
+```sh
+npm run benchmark -- /path/to/previous/collector.js
+```
+
+The benchmark covers fully loaded and virtualized conversations. Each run checks the expected message count and order; comparisons also require identical IDs, roles, plain text, and Markdown. Timing results are fixture measurements, not a performance guarantee for a signed-in ChatGPT account.
+
+Example Chromium measurements against the collector at commit `24bd35a`, using 40 messages per fixture:
+
+| Fixture | Previous | Optimized | Body conversion attempts, previous → optimized |
+| --- | --- | --- | --- |
+| Fully loaded | 13.8 s | 5.1 s | 1,720 → 40 |
+| Virtualized | 14.4 s | 5.2 s | 1,800 → 122 |
+
+Both comparisons produced identical message IDs, order, roles, plain text, and Markdown. Conversion attempts include empty message shells. These single-run fixture measurements are roughly 2.7–2.8 times faster; actual page performance depends on rendering latency and conversation structure.
